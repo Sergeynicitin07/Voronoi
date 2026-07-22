@@ -93,10 +93,7 @@ void Canvas::paintEvent(QPaintEvent *event) {
         if (dcel.faces[face1_idx].isdead || dcel.faces[face2_idx].isdead) continue;
 
 
-        bool f1_has_super = (dcel.faces[face1_idx].v[0] < 3 || dcel.faces[face1_idx].v[1] < 3 || dcel.faces[face1_idx].v[2] < 3);
-        bool f2_has_super = (dcel.faces[face2_idx].v[0] < 3 || dcel.faces[face2_idx].v[1] < 3 || dcel.faces[face2_idx].v[2] < 3);
 
-        if (f1_has_super || f2_has_super) continue;
 
 
         Vertex a1 = dcel.vertices[dcel.faces[face1_idx].v[0]];
