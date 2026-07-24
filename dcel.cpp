@@ -113,9 +113,9 @@ std::vector<Vertex> generateRandomDOTS(int n, int width, int height) {
 }
 
 void DCEL::bewilder () {
-    int dot0 = addVertex(-10000, -10000);
-    int dot1 = addVertex(10000, -10000);
-    int dot2 = addVertex(0, 10000);
+    int dot0 = addVertex(-1e7, -1e7);
+    int dot1 = addVertex(1e7, -1e7);
+    int dot2 = addVertex(0, 1e7);
 
     // это индекс для первой грани
     int f0 = 0;
