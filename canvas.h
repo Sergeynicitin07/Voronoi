@@ -19,11 +19,12 @@ private slots:
     void addNextPoint();
 
 private:
-    DCEL dcel;
+    Delaunay triangulation;
     std::vector<Vertex> points_to_add;
     int current_point_index = 0;
     QTimer *timer;
 };
 
-#endif // CANVAS_H
 
+
+#endif // CANVAS_H
