@@ -169,7 +169,6 @@ int Delaunay::locate(const Vertex& p) {
 
 
 
-
 void Delaunay::finalize() {
     if (is_finalized) return;
 
@@ -276,6 +275,122 @@ std::vector<int> DCEL::stun (int face_idx, double x, double y) {
 
     // Переиспользуем старую грань для первого треугольника
     int g0 = face_idx;
+
+    faces[g0].inner_comp = edge0;
+
+
+    // Чтобы сохранить условие Эйлера добавляем только 2 новые грани
+    int g1 = faces.size();
+    faces.push_back({edge1});
+
+    int g2 = faces.size();
+    faces.push_back({edge2});
+
+
+    int edge_pa = edges.size();
+    int edge_ap = edges.size() + 1;
+    int edge_pb = edges.size() + 2;
+    int edge_bp = edges.size() + 3;
+    int edge_pc = edges.size() + 4;
+    int edge_cp = edges.size() + 5;
+    edges.push_back({p, edge_ap, edge0, edge_bp, g0});
+    edges.push_back({a, edge_pa, edge_pc, edge2, g2});
+    edges.push_back({p, edge_bp, edge1,  edge_cp, g1});
+    edges.push_back({b, edge_pb, edge_pa, edge0, g0});
+    edges.push_back({p, edge_cp, edge2,  edge_ap, g2});
+    edges.push_back({c, edge_pc, edge_pb, edge1, g1});
+
+
+
+
+    edges[edge0].origin = a;
+    edges[edge0].next = edge_bp;
+    edges[edge0].prev = edge_pa;
+    edges[edge0].face = g0;
+
+
+
+    edges[edge1].origin = b;
+    edges[edge1].next = edge_cp;
+    edges[edge1].prev = edge_pb;
+    edges[edge1].face = g1;
+
+
+
+
+    edges[edge2].origin = c;
+    edges[edge2].next = edge_ap;
+    edges[edge2].prev = edge_pc;
+    edges[edge2].face = g2;
+
+
+    // точка p должна быть привязана к какому-то полуребру
+    vertices[p].incident_edge = edge_pa;
+
+    return {edge0, edge1, edge2};
+}
+
+
+void DCEL::change_edge (int edge_ab){
+
+    int edge_ba = edges[edge_ab].twin;
+    int edge_bc = edges[edge_ab].next;
+    int edge_ca = edges[edge_ab].prev;
+    int edge_ad = edges[edge_ba].next;
+    int edge_db = edges[edge_ba].prev;
+
+    int a = edges[edge_ab].origin;
+    int b = edges[edge_ba].origin;
+    int c = edges[edge_ca].origin;
+    int d = edges[edge_db].origin;
+
+
+    // выпишим грани
+
+    int f_newA = edges[edge_ab].face;
+    int f_newB = edges[edge_ba].face;
+
+    faces[f_newA].inner_comp = edge_ab; // Треугольник P - D - B
+    faces[f_newB].inner_comp = edge_ba; // Треугольник D - P - A
+
+
+
+
+    // теперь точка A стала C, а точка B - D
+    edges[edge_ab].origin = c;
+    edges[edge_ba].origin = d;
+
+
+    edges[edge_ab].face = f_newA;
+    edges[edge_ab].next = edge_db;
+    edges[edge_ab].prev = edge_bc;
+
+
+    edges[edge_ba].face = f_newB;
+    edges[edge_ba].next = edge_ca;
+    edges[edge_ba].prev = edge_ad;
+
+    edges[edge_db].next = edge_bc;
+    edges[edge_db].prev = edge_ab;
+    edges[edge_db].face = f_newA;
+
+
+    edges[edge_bc].face = f_newA;
+    edges[edge_bc].next = edge_ab;
+    edges[edge_bc].prev = edge_db;
+
+
+    edges[edge_ba].face = f_newB;
+    edges[edge_ba].next = edge_ca;
+    edges[edge_ba].prev = edge_ad;
+
+
+    edges[edge_ca].face = f_newB;
+    edges[edge_ca].next = edge_ad;
+    edges[edge_ca].prev = edge_ba;
+
+
+    edges[edge_ad].face = f_newB;
     edges[edge_ad].prev = edge_ca;
     edges[edge_ad].next = edge_ba;
 
@@ -392,3 +507,4 @@ void Delaunay::turn_into (double x, double y) {
     manage(p_, e1);
     manage(p_, e2);
 }
+
