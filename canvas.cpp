@@ -1,36 +1,37 @@
 #include "canvas.h"
-#include <QPainter>
 #include <QPen>
-#include <random>
-#include <algorithm>
 
 Canvas::Canvas(QWidget *parent) : QWidget(parent) {
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &Canvas::addNextPoint);
 }
 
-void Canvas::startAnimation(int num_points) {
-    triangulation = Delaunay();
+void Canvas::startTriangulation(int num_points) {
 
     points_to_add = generateRandomDOTS(num_points, width(), height());
-
-    std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(points_to_add.begin(), points_to_add.end(), g);
-
     current_point_index = 0;
+    is_finalized = false;
 
-    timer->start(50);
+
+    triangulation = Delaunay();
+
+    timer->start(100);
+
 }
 
 void Canvas::addNextPoint() {
     if (current_point_index < points_to_add.size()) {
         Vertex p = points_to_add[current_point_index];
         triangulation.turn_into(p.x, p.y);
-
         current_point_index++;
         update();
     } else {
+
+        if (!is_finalized) {
+            triangulation.finalize();
+            is_finalized = true;
+            update();
+        }
         timer->stop();
     }
 }
@@ -39,79 +40,102 @@ void Canvas::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    painter.fillRect(rect(), Qt::white);
+    DCEL& d = triangulation.dcel;
 
-    std::vector<bool> active_faces(triangulation.dcel.faces.size(), false);
 
-    painter.setPen(QPen(QColor(150, 150, 255, 100), 1, Qt::DashLine));
+    painter.setPen(QPen(Qt::lightGray, 1));
+    for (size_t i = 0; i < d.edges.size(); ++i) {
+        int next_e = d.edges[i].next;
+        if (next_e != -1) {
+            Vertex p1 = d.vertices[d.edges[i].origin];
+            Vertex p2 = d.vertices[d.edges[next_e].origin];
+            painter.drawLine(QPointF(p1.x, p1.y), QPointF(p2.x, p2.y));
+        }
+    }
 
-    for (const auto& h_face : triangulation.history) {
-        if (h_face.isdead) continue;
-        
-        if (h_face.face0 != -1) {
-            active_faces[h_face.face0] = true;
+
+    if (is_finalized) {
+        painter.setPen(QPen(Qt::red, 2));
+
+
+        std::vector<QPointF> voronoi_vertices(d.faces.size());
+        for (size_t i = 0; i < d.faces.size(); ++i) {
+            int e0 = d.faces[i].inner_comp;
+            if (e0 == -1) continue;
+            int e1 = d.edges[e0].next;
+            int e2 = d.edges[e1].next;
+
+
+            
+            Vertex a = d.vertices[d.edges[e0].origin];
+            Vertex b = d.vertices[d.edges[e1].origin];
+            Vertex c = d.vertices[d.edges[e2].origin];
+
+            
+
+            Vertex center = we_should_find_centre(a, b, c);
+            voronoi_vertices[i] = QPointF(center.x, center.y);
         }
 
-        int iv0 = h_face.v[0];
-        int iv1 = h_face.v[1];
-        int iv2 = h_face.v[2];
 
-        if (iv0 < 3 || iv1 < 3 || iv2 < 3) {
-            continue;
+        for (size_t i = 0; i < d.edges.size(); ++i) {
+            int current_face = d.edges[i].face;
+            int twin_edge = d.edges[i].twin;
+
+            if (current_face == -1) continue;
+
+            if (twin_edge != -1) {
+                int twin_face = d.edges[twin_edge].face;
+
+                if (twin_face != -1 && i < twin_edge) {
+                    painter.drawLine(voronoi_vertices[current_face], voronoi_vertices[twin_face]);
+                }
+            } else {
+
+                int next_e = d.edges[i].next;
+                Vertex A = d.vertices[d.edges[i].origin];
+                Vertex B = d.vertices[d.edges[next_e].origin];
+
+
+
+
+                
+
+                double dx = B.x - A.x;
+                double dy = B.y - A.y;
+
+
+                double nx = dy;
+                double ny = -dx;
+
+
+                double ray_length = 2000.0;
+                QPointF start = voronoi_vertices[current_face];
+                QPointF end(start.x() + nx * ray_length, start.y() + ny * ray_length);
+
+                painter.drawLine(start, end);
+            }
         }
-
-        Vertex v0 = triangulation.dcel.vertices[iv0];
-        Vertex v1 = triangulation.dcel.vertices[iv1];
-        Vertex v2 = triangulation.dcel.vertices[iv2];
-
-        painter.drawLine(QPointF(v0.x, v0.y), QPointF(v1.x, v1.y));
-        painter.drawLine(QPointF(v1.x, v1.y), QPointF(v2.x, v2.y));
-        painter.drawLine(QPointF(v2.x, v2.y), QPointF(v0.x, v0.y));
     }
 
 
-    painter.setPen(QPen(QColor(0, 180, 0), 2));
 
-    for (size_t i = 0; i < triangulation.dcel.edges.size(); ++i) {
-        int twin_idx = triangulation.dcel.edges[i].twin;
 
-        if (twin_idx == -1 || i > twin_idx) continue;
 
-        int face1_idx = triangulation.dcel.edges[i].face;
-        int face2_idx = triangulation.dcel.edges[twin_idx].face;
 
-        if (face1_idx == -1 || face2_idx == -1) continue;
-        
-        if (!active_faces[face1_idx] || !active_faces[face2_idx]) continue;
 
-        int e1_next = triangulation.dcel.edges[i].next;
-        int e1_prev = triangulation.dcel.edges[i].prev;
-        
-        Vertex a1 = triangulation.dcel.vertices[triangulation.dcel.edges[i].origin];
-        Vertex b1 = triangulation.dcel.vertices[triangulation.dcel.edges[e1_next].origin];
-        Vertex c1 = triangulation.dcel.vertices[triangulation.dcel.edges[e1_prev].origin];
 
-        int e2_next = triangulation.dcel.edges[twin_idx].next;
-        int e2_prev = triangulation.dcel.edges[twin_idx].prev;
 
-        Vertex a2 = triangulation.dcel.vertices[triangulation.dcel.edges[twin_idx].origin];
-        Vertex b2 = triangulation.dcel.vertices[triangulation.dcel.edges[e2_next].origin];
-        Vertex c2 = triangulation.dcel.vertices[triangulation.dcel.edges[e2_prev].origin];
-
-        Vertex circum1 = we_should_find_centre(a1, b1, c1);
-        Vertex circum2 = we_should_find_centre(a2, b2, c2);
-
-        painter.drawLine(QPointF(circum1.x, circum1.y), QPointF(circum2.x, circum2.y));
-    }
-
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(Qt::red);
-    for (int i = 0; i < current_point_index; ++i) {
-        painter.drawEllipse(QPointF(points_to_add[i].x, points_to_add[i].y), 3, 3);
-    }
-
-    if (current_point_index > 0 && current_point_index <= points_to_add.size()) {
-        painter.setBrush(Qt::green);
-        painter.drawEllipse(QPointF(points_to_add[current_point_index-1].x, points_to_add[current_point_index-1].y), 5, 5);
+    
+    painter.setPen(QPen(Qt::black, 4));
+    for (size_t i = 0; i < d.vertices.size(); ++i) {
+        painter.drawPoint(QPointF(d.vertices[i].x, d.vertices[i].y));
     }
 }
+
+
+
+
+
+
+
