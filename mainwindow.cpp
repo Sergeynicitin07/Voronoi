@@ -40,5 +40,5 @@ MainWindow::~MainWindow() {}
 
 void MainWindow::onGenerateClicked() {
     int num_points = pointsSpinBox->value();
-    canvas->startAnimation(num_points);
+    canvas->startTriangulation(num_points);
 }
