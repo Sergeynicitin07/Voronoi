@@ -6,15 +6,7 @@ double pseudoscalar(const Vertex& a, const Vertex& b) {
     return (a.x * b.y) - (a.y * b.x);
 }
 
-
-// точки на плоскости a, b, c
-// < 0 => поворот направо
-// > 0 => поворот налево
-// = 0 => прямо
-
-
 const double EPS = 1e-9;
-
 
 
 // to find delanay centre
@@ -36,8 +28,10 @@ Vertex we_should_find_centre(const Vertex& a, const Vertex& b, const Vertex& c) 
 
     return {ux, uy, -1};
 }
-
-
+// точки на плоскости a, b, c
+// < 0 => поворот направо
+// > 0 => поворот налево
+// = 0 => прямо
 
 
 int orientation (const Vertex& a, const Vertex& b, const Vertex& c) {
@@ -51,6 +45,8 @@ int orientation (const Vertex& a, const Vertex& b, const Vertex& c) {
     return 0;
 
 }
+
+
 
 
 bool convex (const Vertex& a, const Vertex& b, const Vertex& c) {
@@ -113,9 +109,10 @@ std::vector<Vertex> generateRandomDOTS(int n, int width, int height) {
 }
 
 void DCEL::bewilder () {
-    int dot0 = addVertex(-1e7, -1e7);
-    int dot1 = addVertex(1e7, -1e7);
-    int dot2 = addVertex(0, 1e7);
+    int dot0 = addVertex(-1e4, -1e4);
+    int dot1 = addVertex(1e4, -1e4);
+    int dot2 = addVertex(0, 1e4);
+
 
     // это индекс для первой грани
     int f0 = 0;
@@ -172,6 +169,97 @@ int Delaunay::locate(const Vertex& p) {
 
 
 
+
+void Delaunay::finalize() {
+    if (is_finalized) return;
+
+    DCEL clean;
+
+
+    std::vector<int> old_to_new_v(dcel.vertices.size(), -1);
+    for (size_t i = 3; i < dcel.vertices.size(); ++i) {
+        old_to_new_v[i] = clean.addVertex(dcel.vertices[i].x, dcel.vertices[i].y);
+    }
+
+
+    std::vector<bool> good_face(dcel.faces.size(), true);
+    for (size_t i = 0; i < dcel.faces.size(); ++i) {
+        int e0 = dcel.faces[i].inner_comp;
+        if (e0 == -1) { good_face[i] = false; continue; }
+
+        int e1 = dcel.edges[e0].next;
+        int e2 = dcel.edges[e1].next;
+
+
+        if (dcel.edges[e0].origin < 3 ||
+            dcel.edges[e1].origin < 3 ||
+            dcel.edges[e2].origin < 3) {
+            good_face[i] = false;
+        }
+    }
+
+
+    std::vector<int> old_to_new_f(dcel.faces.size(), -1);
+    for (size_t i = 0; i < dcel.faces.size(); ++i) {
+        if (good_face[i]) {
+            old_to_new_f[i] = clean.faces.size();
+            clean.faces.push_back({-1});
+        }
+    }
+
+
+    std::vector<int> old_to_new_e(dcel.edges.size(), -1);
+    for (size_t i = 0; i < dcel.edges.size(); ++i) {
+        int f = dcel.edges[i].face;
+        if (f != -1 && good_face[f]) {
+            old_to_new_e[i] = clean.edges.size();
+            clean.edges.push_back(HalfEdge());
+        }
+    }
+
+
+    for (size_t i = 0; i < dcel.edges.size(); ++i) {
+        int new_e = old_to_new_e[i];
+        if (new_e != -1) {
+            clean.edges[new_e].origin = old_to_new_v[dcel.edges[i].origin];
+            clean.edges[new_e].face   = old_to_new_f[dcel.edges[i].face];
+            clean.edges[new_e].next   = old_to_new_e[dcel.edges[i].next];
+            clean.edges[new_e].prev   = old_to_new_e[dcel.edges[i].prev];
+
+            int twin = dcel.edges[i].twin;
+
+            if (twin != -1 && old_to_new_e[twin] != -1) {
+                clean.edges[new_e].twin = old_to_new_e[twin];
+            } else {
+                clean.edges[new_e].twin = -1;
+            }
+        }
+    }
+
+
+    for (size_t i = 0; i < dcel.faces.size(); ++i) {
+        if (good_face[i]) {
+            clean.faces[old_to_new_f[i]].inner_comp = old_to_new_e[dcel.faces[i].inner_comp];
+        }
+    }
+
+
+    for (size_t e = 0; e < clean.edges.size(); ++e) {
+        int v = clean.edges[e].origin;
+        if (clean.vertices[v].incident_edge == -1) {
+            clean.vertices[v].incident_edge = e;
+        }
+    }
+
+
+    this->dcel = clean;
+    this->is_finalized = true;
+}
+
+
+
+
+
 std::vector<int> DCEL::stun (int face_idx, double x, double y) {
     // добавляем в список вершин
     int p = addVertex(x, y);
@@ -185,120 +273,9 @@ std::vector<int> DCEL::stun (int face_idx, double x, double y) {
     int c = edges[edge2].origin; // Вершина C
     // создаем новые грани. в качестве индексов возьмем длину массива на данный момент
     // При создании новых граней g0, g1, g2 сразу фиксируем их вершины
-    int g0 = faces.size();
-    faces.push_back({edge0});
 
-    int g1 = faces.size();
-    faces.push_back({edge1});
-
-    int g2 = faces.size();
-    faces.push_back({edge2});
-
-
-    int edge_pa = edges.size();
-    int edge_ap = edges.size() + 1;
-    int edge_pb = edges.size() + 2;
-    int edge_bp = edges.size() + 3;
-    int edge_pc = edges.size() + 4;
-    int edge_cp = edges.size() + 5;
-    edges.push_back({p, edge_ap, edge0, edge_bp, g0});
-    edges.push_back({a, edge_pa, edge_pc, edge2, g2});
-    edges.push_back({p, edge_bp, edge1,  edge_cp, g1});
-    edges.push_back({b, edge_pb, edge_pa, edge0, g0});
-    edges.push_back({p, edge_cp, edge2,  edge_ap, g2});
-    edges.push_back({c, edge_pc, edge_pb, edge1, g1});
-
-
-
-
-    edges[edge0].origin = a;
-    edges[edge0].next = edge_bp;
-    edges[edge0].prev = edge_pa;
-    edges[edge0].face = g0;
-
-
-
-    edges[edge1].origin = b;
-    edges[edge1].next = edge_cp;
-    edges[edge1].prev = edge_pb;
-    edges[edge1].face = g1;
-
-
-
-
-    edges[edge2].origin = c;
-    edges[edge2].next = edge_ap;
-    edges[edge2].prev = edge_pc;
-    edges[edge2].face = g2;
-
-
-    // точка p должна быть привязана к какому-то полуребру
-    vertices[p].incident_edge = edge_pa;
-
-    return {edge0, edge1, edge2};
-}
-
-
-void DCEL::change_edge (int edge_ab){
-
-    int edge_ba = edges[edge_ab].twin;
-    int edge_bc = edges[edge_ab].next;
-    int edge_ca = edges[edge_ab].prev;
-    int edge_ad = edges[edge_ba].next;
-    int edge_db = edges[edge_ba].prev;
-
-    int a = edges[edge_ab].origin;
-    int b = edges[edge_ba].origin;
-    int c = edges[edge_ca].origin;
-    int d = edges[edge_db].origin;
-
-
-    // выпишим грани
-
-
-    int f_newA = faces.size();
-    faces.push_back({edge_ab}); // Треугольник P - D - B
-
-    int f_newB = faces.size();
-    faces.push_back({edge_ba}); // Треугольник D - P - A
-
-
-
-    // теперь точка A стала C, а точка B - D
-    edges[edge_ab].origin = c;
-    edges[edge_ba].origin = d;
-
-
-    edges[edge_ab].face = f_newA;
-    edges[edge_ab].next = edge_db;
-    edges[edge_ab].prev = edge_bc;
-
-
-    edges[edge_ba].face = f_newB;
-    edges[edge_ba].next = edge_ca;
-    edges[edge_ba].prev = edge_ad;
-
-    edges[edge_db].next = edge_bc;
-    edges[edge_db].prev = edge_ab;
-    edges[edge_db].face = f_newA;
-
-
-    edges[edge_bc].face = f_newA;
-    edges[edge_bc].next = edge_ab;
-    edges[edge_bc].prev = edge_db;
-
-
-    edges[edge_ba].face = f_newB;
-    edges[edge_ba].next = edge_ca;
-    edges[edge_ba].prev = edge_ad;
-
-
-    edges[edge_ca].face = f_newB;
-    edges[edge_ca].next = edge_ad;
-    edges[edge_ca].prev = edge_ba;
-
-
-    edges[edge_ad].face = f_newB;
+    // Переиспользуем старую грань для первого треугольника
+    int g0 = face_idx;
     edges[edge_ad].prev = edge_ca;
     edges[edge_ad].next = edge_ba;
 
@@ -335,7 +312,7 @@ void Delaunay::manage (int p0, int holy_edge) {
     Vertex d = dcel.vertices[d0];
 
     if (point_in_circle(b, a, d, p)) {
-        // Запоминаем текущие грани dcel, которые будут анигилированы
+        // Запоминаем текущие грани dcel, которые будут аннигилированы
         int f_a = dcel.edges[holy_edge].face;
         int f_b = dcel.edges[twinki_pinki].face;
 
@@ -367,10 +344,6 @@ void Delaunay::manage (int p0, int holy_edge) {
         manage(p0, pr);
         manage(p0, nx);
     }
-
-
-
-   
 }
 
 
@@ -419,4 +392,3 @@ void Delaunay::turn_into (double x, double y) {
     manage(p_, e1);
     manage(p_, e2);
 }
-
